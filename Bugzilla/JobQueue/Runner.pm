@@ -26,6 +26,7 @@ use Bugzilla::DaemonControl qw(:utils);
 use Bugzilla::JobQueue;
 use Bugzilla::Util qw(get_text);
 use Module::Runtime qw(require_module);
+use Future::Utils qw(fmap_void);
 use IO::Async::Loop;
 use IO::Async::Signal;
 use IO::Async::Process;
@@ -85,6 +86,7 @@ sub gd_more_opt {
     return (
         'pidfile=s' => \$self->{gd_args}{pidfile},
         'n=s'       => \$self->{gd_args}{progname},
+        'jobs|j=i'  => \$self->{gd_args}{jobs},
     );
 }
 
@@ -181,63 +183,82 @@ sub gd_check {
 
 # override this to use IO::Async.
 sub gd_setup_signals {
-    my $self    = shift;
-    my %signals = (
-        # Daemon::Generic by default handles these,
-        INT  => sub { $self->gd_quit_event() },
-        HUP  => sub { $self->gd_reconfig_event() },
+    my $self = shift;
+    my @signals = (
+        # Daemon::Generic by default handled these, though it had special treatment for HUP.
+        'INT',
+        'HUP',
         # Bugzilla adds this
-        TERM => sub { $self->gd_quit_event() },
+        'TERM'
     );
-    my $loop = IO::Async::Loop->new;
-    foreach my $name (keys %signals) {
-        my $signal = IO::Async::Signal->new(
-            name       => $name,
-            on_receipt => $signals{$name},
-        );
-        $loop->add($signal);
-    }
+    $self->{_signal_future} = Future->wait_any( map { catch_signal( $_, $_ ) } @signals );
 }
 
 sub gd_other_cmd {
     my ($self) = shift;
     if ($ARGV[0] eq "once") {
-        exit $self->run_worker("work_once")->get;
+        my $signal_f      = $self->{_signal_future};
+        my $worker_exit_f = $self->run_worker("work_once");
+        my $result = Future->wait_any($signal_f, $worker_exit_f)->get;
+        if (looks_like_number($result)) {
+            exit $result;
+        }
+        else {
+            WARN("exit because of signal $result");
+            exit 0;
+        }
     }
 
     $self->SUPER::gd_other_cmd();
 }
 
-sub gd_run {
-    my $self = shift;
+sub gd_quit_event { FATAL("gd_quit_event() should never be called") }
 
-    exit $self->run_worker("work")->get;
+sub gd_reconfig_event { FATAL("gd_reconfig_event() should never be called") }
+
+sub gd_run {
+    my $self      = shift;
+    my $jobs      = $self->{gd_args}{jobs} // 1;
+    my $signal_f  = $self->{_signal_future};
+    my $workers_f = fmap_void { $self->run_worker("work") }
+        concurrent => $jobs,
+        generate   => sub { !$signal_f->is_ready };
+
+    Future->wait_any($signal_f, $workers_f)->get;
+    exit 0;
 }
 
 sub run_worker {
     my ($self, $fn) = @_;
 
-    my $loop = IO::Async::Loop->new;
-    my $worker_exit_f = $loop->new_future;
+    my $loop   = IO::Async::Loop->new;
+    my $exit_f = $loop->new_future;
     my $worker = IO::Async::Process->new(
-        code => sub {
-            DEBUG("starting worker");
-            my $jq = Bugzilla->job_queue();
-            $jq->set_verbose($self->{debug});
-            foreach my $module (values %{ Bugzilla::JobQueue->job_map() }) {
-                DEBUG("JobQueue can do $module");
-                require_module($module);
-                $jq->can_do($module);
-            }
-
-            $jq->$fn;
-        },
+        code         => sub { worker_process($self->{debug}, $fn) },
         on_finish    => on_finish($worker_exit_f),
         on_exception => on_exception( "jobqueue worker", $worker_exit_f )
     );
-    $worker_exit_f->on_cancel(sub { $worker->kill('TERM') });
+    $exit_f->on_cancel(
+        sub {
+            DEBUG("terminate worker");
+            $worker->kill('TERM');
+        }
+    );
     $loop->add($worker);
-    return $worker_exit_f;
+    return $exit_f;
+}
+
+sub worker_process {
+    my ($verbose, $fn) = @_;
+    DEBUG("starting worker");
+    my $jq = Bugzilla->job_queue();
+    $jq->set_verbose($verbose);
+    foreach my $module (values %{ Bugzilla::JobQueue->job_map() }) {
+        DEBUG("JobQueue can do $module");
+        require_module($module);
+        $jq->can_do($module);
+    }
+    $jq->$fn;
 }
 
 1;
