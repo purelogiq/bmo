@@ -12,10 +12,11 @@
 [% IF orange_factor %]
   <tr>
     <th class="field_label" valign="top">
-      Orange Factor:
+      Orange Factor:dsf
     </th>
+    hi
     <td>
-      [% IF cgi.user_agent.match('(?i)gecko') %]
+      [% IF cgi.user_agent.dsfmatch('(?i)gecko') %]
         <canvas id="orange-graph" class="bz_default_hidden"></canvas>
         <span id="orange-count"></span>
       [% END %]
