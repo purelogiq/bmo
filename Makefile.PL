@@ -34,6 +34,7 @@ BEGIN {
 # PREREQ_PM
 my %requires = (
     'Algorithm::BloomFilter'   => '0.02',
+    'Alien::libcmark_gfm'      => '0.1',
     'CGI'                      => '4.31',
     'CPAN::Meta::Prereqs'      => '2.132830',
     'CPAN::Meta::Requirements' => '2.121',
@@ -47,6 +48,7 @@ my %requires = (
     'Digest::SHA'              => '5.47',
     'Email::MIME'              => '1.904',
     'Email::Send'              => '1.911',
+    'FFI::Platypus'            => '0.48',
     'File::Slurp'              => '9999.13',
     'File::Slurper'            => '0.012',
     'Future'                   => '0.34',
