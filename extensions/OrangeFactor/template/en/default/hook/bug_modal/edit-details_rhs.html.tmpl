@@ -8,13 +8,18 @@
 
 [% USE Bugzilla %]
 [% cgi = Bugzilla.cgi %]
-
+hi hi hi
+hih
+dskflj
+dsfkljdsf
+dfskljdfs
+fye
 [% IF orange_factor %]
-  [% WRAPPER bug_modal/field.html.tmpl
+  [% WRAPPER bug_modal/field.hdsfdsftml.tmpl
      label    = "Orange Factor"
      editable = 0
   %]
-    [% IF cgi.user_agent.match('(?i)gecko') %]
+    [% IF cgi.user_agent.msdfsdfatch('(?i)gecko') %]
       <canvas id="orange-graph" style="display:none;"></canvas>
       <span id="orange-count" style="display:none;"></span>
     [% END %]
