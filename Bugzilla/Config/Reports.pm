@@ -19,14 +19,19 @@ sub get_param_list {
     my $class      = shift;
     my @param_list = (
         {
+            name    => 'report_secbugs_active',
+            type    => 'b',
+            default => 1,
+        },
+        {
             name    => 'report_secbugs_emails',
             type    => 't',
-            default => ''
+            default => 'bugzilla-admin@mozilla.org'
         },
         {
             name    => 'report_secbugs_products',
             type    => 'l',
-            default => ''
+            default => '[]'
         },
      );
 }

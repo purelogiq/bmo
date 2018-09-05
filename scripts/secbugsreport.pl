@@ -22,70 +22,46 @@ use Bugzilla::Report::SecurityRisk;
 
 use DateTime;
 use URI;
+use JSON::MaybeXS;
 
 BEGIN { Bugzilla->extensions }
 Bugzilla->usage_mode(USAGE_MODE_CMDLINE);
 
-my $html;
-my $template = Bugzilla->template();
-my $start_date = DateTime->today()->subtract(years => 3);
-my $end_date = DateTime->today()->subtract(years => 2, months => 6);
-my $report_week = $end_date->ymd('-');
-my $products = [
-    # Frontend
-    'Firefox',
-    'DevTools',
-    'Toolkit',
-    'WebExtensions',
-    # Platform
-    'Core',
-    'Firefox Build System',
-    'NSPR',
-    'NSS',
-    # Mobile
-    'Firefox for Android',
-    'Firefox for iOS',
-    'Focus',
-    'Focus-iOS',
-    'Emerging Markets',
-    # Others
-    'External Software Affecting Firefox',
-    'Cloud Services',
-    'Pocket',
-];
+exit 0 unless Bugzilla->params->{report_secbugs_active};
+
+my $template     = Bugzilla->template();
+my $start_date   = DateTime->today()->subtract(years => 3);
+my $end_date     = DateTime->today()->subtract(years => 2, months => 6);
+my $report_week  = $end_date->ymd('-');
+my $products     = decode_json(Bugzilla->params->{report_secbugs_products});
 my $sec_keywords = [
     'sec-critical',
     'sec-high'
 ];
 my $report = Bugzilla::Report::SecurityRisk->new(
-    start_date => $start_date,
-    end_date => $end_date,
-    products => $products,
+    start_date   => $start_date,
+    end_date     => $end_date,
+    products     => $products,
     sec_keywords => $sec_keywords
 );
 my $vars = {
-    urlbase => Bugzilla->localconfig->{urlbase},
-    report_week => $report_week,
-    products => $products,
-    sec_keywords => $sec_keywords,
-    results => $report->results,
-    build_bugs_link => sub {
-        my ($arr, $product) = @_;
-        my $uri = URI->new(Bugzilla->localconfig->{urlbase} . 'buglist.cgi');
-        $uri->query_param(bug_id => (join ',', @$arr));
-        $uri->query_param(product => $product) if $product;
-        return $uri->as_string;
-    }
+    urlbase         => Bugzilla->localconfig->{urlbase},
+    report_week     => $report_week,
+    products        => $products,
+    sec_keywords    => $sec_keywords,
+    results         => $report->results,
+    build_bugs_link => \&build_bugs_link,
 };
 
+my $html;
 $template->process('reports/email/security-risk.html.tmpl', $vars, \$html)
-            || ThrowTemplateError($template->error());
+  or ThrowTemplateError($template->error());
 
 # For now, only send HTML email.
 my $email = Email::MIME->create(
     header_str => [
-        From => Bugzilla->params->{'mailfrom'},
-        To => 'vagrant@bmo-web.vm',
+        From    => Bugzilla->params->{'mailfrom'},
+        To      => Bugzilla->params->{report_secbugs_email},
         Subject => "Security Bugs Report for $report_week"
     ],
     attributes => {
@@ -97,3 +73,11 @@ my $email = Email::MIME->create(
 );
 
 MessageToMTA($email);
+
+sub build_bugs_link {
+    my ($arr, $product) = @_;
+    my $uri = URI->new(Bugzilla->localconfig->{urlbase} . 'buglist.cgi');
+    $uri->query_param(bug_id => join(',', @$arr));
+    $uri->query_param(product => $product) if $product;
+    return $uri->as_string;
+}
