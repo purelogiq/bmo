@@ -8,6 +8,9 @@ use 5.10.1;
 use strict;
 use warnings;
 use lib qw( . lib local/lib/perl5 );
+
+use Bugzilla::Test::MockDB;
+use Bugzilla::Test::MockParams (password_complexity => 'no_constraints');
 use Bugzilla;
 use Test2::V0;
 
@@ -45,5 +48,30 @@ is(
   "<p><del>strikethrough</del></p>\n",
   'Strikethrough extension'
 );
+
+my $table_markdown = <<'MARKDOWN';
+| Col1 | Col2 |
+| ---- |:----:|
+| val1 | val2 |
+MARKDOWN
+
+my $table_html = <<'HTML';
+<table>
+<thead>
+<tr>
+<th>Col1</th>
+<th align="center">Col2</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>val1</td>
+<td align="center">val2</td>
+</tr>
+</tbody>
+</table>
+HTML
+
+is($parser->render_html($table_markdown), $table_html, 'Table extension');
 
 done_testing;
